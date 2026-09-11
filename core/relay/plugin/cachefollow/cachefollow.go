@@ -19,8 +19,9 @@ import (
 )
 
 const (
+	maxFollowedChannelTTL              = 5 * time.Minute
 	defaultFollowedChannelTTL          = 3 * time.Minute
-	defaultRecentChannelUpdateDebounce = 30 * time.Second
+	defaultRecentChannelUpdateDebounce = 45 * time.Second
 )
 
 var _ plugin.Plugin = (*Plugin)(nil)
@@ -44,6 +45,8 @@ func (p *Plugin) getConfig(meta *meta.Meta) (*Config, error) {
 }
 
 func getFollowedChannelTTL(retention string, defaultTTL time.Duration) time.Duration {
+	defaultTTL = min(defaultTTL, maxFollowedChannelTTL)
+
 	retention = strings.TrimSpace(strings.ToLower(retention))
 	if retention == "" || retention == "in-memory" || retention == "in_memory" {
 		return defaultTTL
@@ -54,7 +57,7 @@ func getFollowedChannelTTL(retention string, defaultTTL time.Duration) time.Dura
 		return defaultTTL
 	}
 
-	return ttl
+	return min(ttl, maxFollowedChannelTTL)
 }
 
 func getNodeStringField(node *ast.Node, key string) (string, bool) {
@@ -154,7 +157,7 @@ func saveStableStoreMapping(
 	meta *meta.Meta,
 	expiresAt time.Time,
 ) error {
-	if id == "" {
+	if id == "" || meta.Channel.BackupOnly {
 		return nil
 	}
 
@@ -283,7 +286,7 @@ func saveCacheFollowMappings(
 
 func supportsPromptCacheStore(m mode.Mode) bool {
 	switch m {
-	case mode.Responses, mode.ChatCompletions:
+	case mode.Responses, mode.ResponsesCompact, mode.ChatCompletions:
 		return true
 	default:
 		return false
@@ -292,7 +295,11 @@ func supportsPromptCacheStore(m mode.Mode) bool {
 
 func supportsCacheFollowStore(m mode.Mode) bool {
 	switch m {
-	case mode.Responses, mode.ChatCompletions, mode.Gemini, mode.Anthropic:
+	case mode.Responses,
+		mode.ResponsesCompact,
+		mode.ChatCompletions,
+		mode.Gemini,
+		mode.Anthropic:
 		return true
 	default:
 		return false
